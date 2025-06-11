@@ -1,11 +1,8 @@
-# 技术设计文档：LiteFlow Redis缓存组件 (修订版)
+# 技术设计文档：LiteFlow Redis缓存组件 (最终修订版)
 
 ## 1. 引言 (Introduction)
 
-### 1.1. 项目背景 (Project Background)
-LiteFlow作为一款高效的工作流执行引擎，在处理复杂业务流程时表现出色。为了进一步提升流程执行效率，减少对外部数据源的频繁访问，并加速热点数据的获取，引入一个灵活、通用的缓存组件成为必要。本项目旨在设计并实现一个基于Redis的缓存组件，使其能够无缝集成到LiteFlow中，为流程节点提供便捷的缓存读写能力。
-
-### 1.2. 文档目的 (Document Purpose)
+### 1.1. 文档目的 (Document Purpose)
 本文档详细阐述了LiteFlow Redis缓存组件的技术设计方案，严格依据已提供的Java代码实现。内容覆盖功能需求、系统设计（特别是核心组件模型）、主要工作流程、关键伪代码实现以及组件交互图。本文档旨在为开发、测试、维护及后续迭代该组件的相关技术人员提供准确、一致的技术参考。
 
 ## 2. 功能需求 (Functional Requirements)
@@ -300,7 +297,7 @@ Redis缓存组件为LiteFlow流程提供数据缓存能力，支持对单个字�
 ```pseudocode
 // RedisCacheServiceImpl.putList
 函数 putList(键 key, 列表<字符串> items, 整型 ttlSeconds, 整型 maxSize):
-    如果 maxSize > 0 且 items.size() > maxSize:
+    如果 maxSize != null 且 maxSize > 0 且 items.size() > maxSize: // 严格按代码中maxSize为Integer
         抛出 新的ExecutionException("列表项数量超过最大限制")
 
     redis模板.execute(new SessionCallback<Object>() {
