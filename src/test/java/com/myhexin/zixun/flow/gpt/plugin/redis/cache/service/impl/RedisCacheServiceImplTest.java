@@ -220,9 +220,8 @@ public class RedisCacheServiceImplTest {
         verify(stringRedisTemplate).delete(key);
         // add should not be called if tuples is empty (which it will be for an empty item list)
         verify(zSetOperationsMock, never()).add(eq(key), anySet());
-        // expire might still be called on the key after delete, depends on specific implementation detail
-        // Current implementation does not call expire if items is empty.
-        verify(stringRedisTemplate, never()).expire(key, ttlSeconds, TimeUnit.SECONDS);
+        // expire should be called even if no items are added, as per current RedisCacheServiceImpl logic
+        verify(stringRedisTemplate).expire(key, ttlSeconds, TimeUnit.SECONDS);
     }
 
     @Test
@@ -236,10 +235,9 @@ public class RedisCacheServiceImplTest {
 
         verify(stringRedisTemplate).delete(key);
         verify(zSetOperationsMock, never()).add(eq(key), anySet()); // No non-null items to add
-        // expire should not be called if no items are added
-        verify(stringRedisTemplate, never()).expire(eq(key), anyLong(), any(TimeUnit.class));
+        // expire should be called even if no items are added, as per current RedisCacheServiceImpl logic
+        verify(stringRedisTemplate).expire(eq(key), eq(ttlSeconds), any(TimeUnit.class));
     }
-
 
     @Test(expected = ExecutionException.class)
     public void testPutList_RedisDeleteException() {

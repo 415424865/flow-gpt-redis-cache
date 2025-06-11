@@ -58,27 +58,38 @@ public class RedisCacheComponentTest {
     @Test(expected = ExecutionException.class)
     public void testCmpProcess_Parser_MissingRequiredField_Type() throws ExecutionException {
         Map<String, Object> inputMap = baseInputMap(null, "testKey", "READ");
-        inputMap.remove("type");
+        // inputMap.remove("type"); // type is null from baseInputMap
+        inputMap.put("keySuffix", "testSuffix"); // Add required keySuffix
         redisCacheComponent.cmpProcess(inputMap);
     }
 
     @Test(expected = ExecutionException.class)
     public void testCmpProcess_Parser_MissingRequiredField_Key() throws ExecutionException {
         Map<String, Object> inputMap = baseInputMap("SINGLE", null, "READ");
-        inputMap.remove("key");
+        // inputMap.remove("key"); // key is null from baseInputMap
+        inputMap.put("keySuffix", "testSuffix"); // Add required keySuffix
         redisCacheComponent.cmpProcess(inputMap);
     }
 
     @Test(expected = ExecutionException.class)
     public void testCmpProcess_Parser_MissingRequiredField_Operation() throws ExecutionException {
         Map<String, Object> inputMap = baseInputMap("SINGLE", "testKey", null);
-        inputMap.remove("operation");
+        // inputMap.remove("operation"); // operation is null from baseInputMap
+        inputMap.put("keySuffix", "testSuffix"); // Add required keySuffix
+        redisCacheComponent.cmpProcess(inputMap);
+    }
+
+    @Test(expected = ExecutionException.class)
+    public void testCmpProcess_Parser_MissingRequiredField_KeySuffix() throws ExecutionException {
+        Map<String, Object> inputMap = baseInputMap("SINGLE", "testKey", "READ");
+        // keySuffix is deliberately not added
         redisCacheComponent.cmpProcess(inputMap);
     }
 
     @Test(expected = ExecutionException.class)
     public void testCmpProcess_Parser_IncompatibleTypeOperation() throws ExecutionException {
         Map<String, Object> inputMap = baseInputMap("SINGLE", "testKey", "ADD"); // ADD is ZSET op
+        inputMap.put("keySuffix", "testSuffix"); // Add required keySuffix
         inputMap.put("value", "testValue"); // Required for ADD
         redisCacheComponent.cmpProcess(inputMap);
     }
@@ -86,42 +97,25 @@ public class RedisCacheComponentTest {
     @Test
     public void testCmpProcess_EffectiveKey_WithSuffix() throws ExecutionException {
         Map<String, Object> inputMap = baseInputMap("SINGLE", "baseKey", "READ");
-        inputMap.put("keySuffix", "suffix");
+        inputMap.put("keySuffix", "suffix"); // This test is valid as keySuffix is provided
 
         when(mockCacheService.getValue("baseKey:suffix")).thenReturn("value");
         redisCacheComponent.cmpProcess(inputMap);
         verify(mockCacheService).getValue("baseKey:suffix");
     }
 
-    @Test
-    public void testCmpProcess_EffectiveKey_WithoutSuffix() throws ExecutionException {
+    @Test(expected = ExecutionException.class) // MODIFIED: Expect parser exception
+    public void testCmpProcess_EffectiveKey_WithoutSuffix_ThrowsException() throws ExecutionException {
         Map<String, Object> inputMap = baseInputMap("SINGLE", "baseKey", "READ");
-
-        when(mockCacheService.getValue("baseKey")).thenReturn("value");
+        // keySuffix is NOT provided, parser will throw ExecutionException
         redisCacheComponent.cmpProcess(inputMap);
-        verify(mockCacheService).getValue("baseKey");
     }
 
-    @Test
-    public void testCmpProcess_EffectiveKey_WithBlankSuffix() throws ExecutionException {
+    @Test(expected = ExecutionException.class) // MODIFIED: Expect parser exception
+    public void testCmpProcess_EffectiveKey_WithBlankSuffix_ThrowsException() throws ExecutionException {
         Map<String, Object> inputMap = baseInputMap("SINGLE", "baseKey", "READ");
-        inputMap.put("keySuffix", "   "); // Blank suffix
-
-        // ParamParser will throw exception for blank keySuffix if it's passed to requireString.
-        // If keySuffix is truly optional and can be blank to be ignored, parser logic needs to allow it.
-        // Assuming parser treats blank as error based on current requireString.
-        // To test component's buildEffectiveKey, we'd need to bypass parser or assume parser allows it.
-        // For this test, let's assume parser is okay, and focus on component.
-        // The current CacheComponentParamParser will actually throw error for blank keySuffix.
-        // So this specific test case for RedisCacheComponent's buildEffectiveKey with a blank suffix
-        // is only reachable if CacheComponentParamParser changes its behavior for blank optional strings.
-        // Let's adjust the test to reflect that buildEffectiveKey itself would use baseKey if suffix is null (parser would make it null).
-
-        // If keySuffix is not in map, parser sets it to null.
-        Map<String, Object> inputMapNoSuffix = baseInputMap("SINGLE", "baseKey", "READ");
-        when(mockCacheService.getValue("baseKey")).thenReturn("value");
-        redisCacheComponent.cmpProcess(inputMapNoSuffix);
-        verify(mockCacheService).getValue("baseKey");
+        inputMap.put("keySuffix", "   "); // Blank suffix, parser will throw ExecutionException
+        redisCacheComponent.cmpProcess(inputMap);
     }
 
 
@@ -129,6 +123,7 @@ public class RedisCacheComponentTest {
     @Test
     public void testCmpProcess_SingleWrite_Success_WithTtl() throws ExecutionException {
         Map<String, Object> inputMap = baseInputMap("SINGLE", "sKey1", "WRITE");
+        inputMap.put("keySuffix", "testSuffix"); // ADDED: keySuffix is mandatory
         inputMap.put("value", "sValue1");
         inputMap.put("ttlSeconds", 3600);
 
@@ -143,6 +138,7 @@ public class RedisCacheComponentTest {
     @Test
     public void testCmpProcess_SingleWrite_Success_DefaultTtl() throws ExecutionException {
         Map<String, Object> inputMap = baseInputMap("SINGLE", "sKey2", "WRITE");
+        inputMap.put("keySuffix", "testSuffix"); // ADDED: keySuffix is mandatory
         inputMap.put("value", "sValue2");
         // No ttlSeconds, should use default
 
@@ -158,34 +154,37 @@ public class RedisCacheComponentTest {
     @Test
     public void testCmpProcess_SingleRead_WithValue() throws ExecutionException {
         Map<String, Object> inputMap = baseInputMap("SINGLE", "sKey3", "READ");
+        inputMap.put("keySuffix", "testSuffix"); // ADDED: keySuffix is mandatory
         String expectedData = "cachedData";
-        when(mockCacheService.getValue("sKey3")).thenReturn(expectedData);
+        when(mockCacheService.getValue("sKey3:testSuffix")).thenReturn(expectedData); // Adjusted expected key
 
         String jsonResult = redisCacheComponent.cmpProcess(inputMap);
         ComponentResult<String> result = JSON.parseObject(jsonResult, new TypeReference<ComponentResult<String>>(){});
 
         assertTrue(result.isSuccess());
         assertEquals(expectedData, result.getData());
-        verify(mockCacheService).getValue("sKey3");
+        verify(mockCacheService).getValue("sKey3:testSuffix"); // Adjusted expected key
     }
 
     @Test
     public void testCmpProcess_SingleRead_NullValue() throws ExecutionException {
         Map<String, Object> inputMap = baseInputMap("SINGLE", "sKey4", "READ");
-        when(mockCacheService.getValue("sKey4")).thenReturn(null);
+        inputMap.put("keySuffix", "testSuffix"); // ADDED: keySuffix is mandatory
+        when(mockCacheService.getValue("sKey4:testSuffix")).thenReturn(null); // Adjusted expected key
 
         String jsonResult = redisCacheComponent.cmpProcess(inputMap);
         ComponentResult<?> result = JSON.parseObject(jsonResult, ComponentResult.class);
 
         assertTrue(result.isSuccess());
         assertNull(result.getData());
-        verify(mockCacheService).getValue("sKey4");
+        verify(mockCacheService).getValue("sKey4:testSuffix"); // Adjusted expected key
     }
 
     // ZSET_OVERWRITE
     @Test
     public void testCmpProcess_ZsetOverwrite_Success_WithParams() throws ExecutionException {
         Map<String, Object> inputMap = baseInputMap("ZSET", "zKey1", "OVERWRITE");
+        inputMap.put("keySuffix", "testSuffix"); // ADDED: keySuffix is mandatory
         List<String> values = Arrays.asList("zVal1", "zVal2");
         inputMap.put("value", JSON.toJSONString(values));
         inputMap.put("ttlSeconds", 1800);
@@ -196,12 +195,13 @@ public class RedisCacheComponentTest {
 
         assertTrue(result.isSuccess());
         assertNull(result.getData());
-        verify(mockCacheService).putList("zKey1", values, 1800, 50);
+        verify(mockCacheService).putList("zKey1:testSuffix", values, 1800, 50); // Adjusted expected key
     }
 
     @Test
     public void testCmpProcess_ZsetOverwrite_Success_DefaultParams() throws ExecutionException {
         Map<String, Object> inputMap = baseInputMap("ZSET", "zKey2", "OVERWRITE");
+        inputMap.put("keySuffix", "testSuffix"); // ADDED: keySuffix is mandatory
         List<String> values = Arrays.asList("zValDefault1", "zValDefault2");
         inputMap.put("value", JSON.toJSONString(values));
 
@@ -210,7 +210,7 @@ public class RedisCacheComponentTest {
 
         assertTrue(result.isSuccess());
         assertNull(result.getData());
-        verify(mockCacheService).putList("zKey2", values, DEFAULT_TTL_SECONDS, DEFAULT_MAX_ELEMENTS);
+        verify(mockCacheService).putList("zKey2:testSuffix", values, DEFAULT_TTL_SECONDS, DEFAULT_MAX_ELEMENTS); // Adjusted expected key
     }
 
 
@@ -218,6 +218,7 @@ public class RedisCacheComponentTest {
     @Test
     public void testCmpProcess_ZsetAdd_Success_WithParams() throws ExecutionException {
         Map<String, Object> inputMap = baseInputMap("ZSET", "zKey3", "ADD");
+        inputMap.put("keySuffix", "testSuffix"); // ADDED: keySuffix is mandatory
         inputMap.put("value", "newZVal");
         inputMap.put("ttlSeconds", 1200);
         inputMap.put("maxElements", 30);
@@ -227,12 +228,13 @@ public class RedisCacheComponentTest {
 
         assertTrue(result.isSuccess());
         assertNull(result.getData());
-        verify(mockCacheService).appendToList("zKey3", "newZVal", 1200, 30);
+        verify(mockCacheService).appendToList("zKey3:testSuffix", "newZVal", 1200, 30); // Adjusted expected key
     }
 
     @Test
     public void testCmpProcess_ZsetAdd_Success_DefaultParams() throws ExecutionException {
         Map<String, Object> inputMap = baseInputMap("ZSET", "zKey4", "ADD");
+        inputMap.put("keySuffix", "testSuffix"); // ADDED: keySuffix is mandatory
         inputMap.put("value", "newZValDefault");
 
         String jsonResult = redisCacheComponent.cmpProcess(inputMap);
@@ -240,81 +242,86 @@ public class RedisCacheComponentTest {
 
         assertTrue(result.isSuccess());
         assertNull(result.getData());
-        verify(mockCacheService).appendToList("zKey4", "newZValDefault", DEFAULT_TTL_SECONDS, DEFAULT_MAX_ELEMENTS);
+        verify(mockCacheService).appendToList("zKey4:testSuffix", "newZValDefault", DEFAULT_TTL_SECONDS, DEFAULT_MAX_ELEMENTS); // Adjusted expected key
     }
 
     // ZSET_READ_ALL
     @Test
     public void testCmpProcess_ZsetReadAll_WithData() throws ExecutionException {
         Map<String, Object> inputMap = baseInputMap("ZSET", "zKey5", "READ_ALL");
+        inputMap.put("keySuffix", "testSuffix"); // ADDED: keySuffix is mandatory
         List<String> expectedList = Arrays.asList("zA", "zB");
-        when(mockCacheService.getList("zKey5")).thenReturn(expectedList);
+        when(mockCacheService.getList("zKey5:testSuffix")).thenReturn(expectedList); // Adjusted expected key
 
         String jsonResult = redisCacheComponent.cmpProcess(inputMap);
         ComponentResult<List<String>> result = JSON.parseObject(jsonResult, new TypeReference<ComponentResult<List<String>>>(){});
 
         assertTrue(result.isSuccess());
         assertEquals(expectedList, result.getData());
-        verify(mockCacheService).getList("zKey5");
+        verify(mockCacheService).getList("zKey5:testSuffix"); // Adjusted expected key
     }
 
     @Test
     public void testCmpProcess_ZsetReadAll_EmptyData() throws ExecutionException {
         Map<String, Object> inputMap = baseInputMap("ZSET", "zKey6", "READ_ALL");
-        when(mockCacheService.getList("zKey6")).thenReturn(Collections.emptyList());
+        inputMap.put("keySuffix", "testSuffix"); // ADDED: keySuffix is mandatory
+        when(mockCacheService.getList("zKey6:testSuffix")).thenReturn(Collections.emptyList()); // Adjusted expected key
 
         String jsonResult = redisCacheComponent.cmpProcess(inputMap);
         ComponentResult<List<String>> result = JSON.parseObject(jsonResult, new TypeReference<ComponentResult<List<String>>>(){});
 
         assertTrue(result.isSuccess());
         assertTrue(result.getData().isEmpty());
-        verify(mockCacheService).getList("zKey6");
+        verify(mockCacheService).getList("zKey6:testSuffix"); // Adjusted expected key
     }
 
     // ZSET_READ_CONDITIONAL
     @Test
     public void testCmpProcess_ZsetReadConditional_WithData() throws ExecutionException {
-        Map<String, Object> inputMap = baseInputMap("ZSET", "zKey7", "READ_CONDITIONAL");
+        Map<String, Object> inputMap = baseInputMap("ZSET", "zKey7", "READ_CONDITION"); // MODIFIED operation name
+        inputMap.put("keySuffix", "testSuffix"); // ADDED: keySuffix is mandatory
         long timestamp = System.currentTimeMillis();
         inputMap.put("conditionTimestamp", timestamp);
         List<String> expectedList = Arrays.asList("zC", "zD");
-        when(mockCacheService.getListSince("zKey7", timestamp)).thenReturn(expectedList);
+        when(mockCacheService.getListSince("zKey7:testSuffix", timestamp)).thenReturn(expectedList); // Adjusted expected key
 
         String jsonResult = redisCacheComponent.cmpProcess(inputMap);
         ComponentResult<List<String>> result = JSON.parseObject(jsonResult, new TypeReference<ComponentResult<List<String>>>(){});
 
         assertTrue(result.isSuccess());
         assertEquals(expectedList, result.getData());
-        verify(mockCacheService).getListSince("zKey7", timestamp);
+        verify(mockCacheService).getListSince("zKey7:testSuffix", timestamp); // Adjusted expected key
     }
 
     // ZSET_CHECK_EXIST
     @Test
     public void testCmpProcess_ZsetCheckExist_True() throws ExecutionException {
         Map<String, Object> inputMap = baseInputMap("ZSET", "zKey8", "CHECK_EXIST");
+        inputMap.put("keySuffix", "testSuffix"); // ADDED: keySuffix is mandatory
         inputMap.put("value", "itemExists");
-        when(mockCacheService.containsInList("zKey8", "itemExists")).thenReturn(true);
+        when(mockCacheService.containsInList("zKey8:testSuffix", "itemExists")).thenReturn(true); // Adjusted expected key
 
         String jsonResult = redisCacheComponent.cmpProcess(inputMap);
         ComponentResult<Boolean> result = JSON.parseObject(jsonResult, new TypeReference<ComponentResult<Boolean>>(){});
 
         assertTrue(result.isSuccess());
         assertTrue(result.getData());
-        verify(mockCacheService).containsInList("zKey8", "itemExists");
+        verify(mockCacheService).containsInList("zKey8:testSuffix", "itemExists"); // Adjusted expected key
     }
 
     @Test
     public void testCmpProcess_ZsetCheckExist_False() throws ExecutionException {
         Map<String, Object> inputMap = baseInputMap("ZSET", "zKey9", "CHECK_EXIST");
+        inputMap.put("keySuffix", "testSuffix"); // ADDED: keySuffix is mandatory
         inputMap.put("value", "itemNotExists");
-        when(mockCacheService.containsInList("zKey9", "itemNotExists")).thenReturn(false);
+        when(mockCacheService.containsInList("zKey9:testSuffix", "itemNotExists")).thenReturn(false); // Adjusted expected key
 
         String jsonResult = redisCacheComponent.cmpProcess(inputMap);
         ComponentResult<Boolean> result = JSON.parseObject(jsonResult, new TypeReference<ComponentResult<Boolean>>(){});
 
         assertTrue(result.isSuccess());
         assertFalse(result.getData());
-        verify(mockCacheService).containsInList("zKey9", "itemNotExists");
+        verify(mockCacheService).containsInList("zKey9:testSuffix", "itemNotExists"); // Adjusted expected key
     }
 
 
@@ -322,23 +329,29 @@ public class RedisCacheComponentTest {
     @Test(expected = ExecutionException.class)
     public void testCmpProcess_CacheServiceThrowsExecutionException() throws ExecutionException {
         Map<String, Object> inputMap = baseInputMap("SINGLE", "errKey1", "READ");
-        when(mockCacheService.getValue("errKey1")).thenThrow(new ExecutionException("Service layer error"));
+        inputMap.put("keySuffix", "testSuffix"); // ADDED: keySuffix is mandatory
+        when(mockCacheService.getValue("errKey1:testSuffix")).thenThrow(new ExecutionException("Service layer error")); // Adjusted expected key
         redisCacheComponent.cmpProcess(inputMap);
     }
 
     @Test
     public void testCmpProcess_CacheServiceThrowsRuntimeException() {
         Map<String, Object> inputMap = baseInputMap("SINGLE", "errKey2", "READ");
-        when(mockCacheService.getValue("errKey2")).thenThrow(new RuntimeException("Unexpected service problem"));
+        inputMap.put("keySuffix", "runtimeSuffix"); // Ensure all required fields for parser are present
+
+        // Effective key will be "errKey2:runtimeSuffix"
+        when(mockCacheService.getValue(eq("errKey2:runtimeSuffix")))
+            .thenThrow(new RuntimeException("Unexpected service problem"));
 
         try {
             redisCacheComponent.cmpProcess(inputMap);
             fail("Should have thrown ExecutionException");
         } catch (ExecutionException e) {
-            assertTrue(e.getMessage().contains("Unexpected error during RedisCacheComponent execution"));
-            assertNotNull(e.getCause());
-            assertTrue(e.getCause() instanceof RuntimeException);
-            assertEquals("Unexpected service problem", e.getCause().getMessage());
+            // These assertions should now pass if the service exception is correctly wrapped
+            assertEquals("Unexpected error during " + redisCacheComponent.getName() + " execution: Unexpected service problem", e.getMessage());
+            assertNotNull("Cause should not be null", e.getCause());
+            assertTrue("Cause should be RuntimeException", e.getCause() instanceof RuntimeException);
+            assertEquals("Original RuntimeException message should be preserved in cause", "Unexpected service problem", e.getCause().getMessage());
         }
     }
 

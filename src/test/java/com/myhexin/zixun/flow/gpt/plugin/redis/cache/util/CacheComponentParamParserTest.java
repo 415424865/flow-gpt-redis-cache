@@ -70,6 +70,7 @@ public class CacheComponentParamParserTest {
     public void testParse_SingleWrite_DefaultTTL() {
         Map<String, Object> input = createBaseInputMap("SINGLE", "testKey", "WRITE");
         input.put("value", "testValue");
+        input.put("keySuffix", "dummySuffix"); // ADDED: keySuffix is mandatory
 
         CacheParams params = CacheComponentParamParser.parse(input);
 
@@ -94,18 +95,11 @@ public class CacheComponentParamParserTest {
         assertNull(params.getMaxElements());
     }
 
-    @Test
-    public void testParse_SingleRead_NoKeySuffix_Success() {
+    @Test(expected = ExecutionException.class)
+    public void testParse_MissingKeySuffix_ThrowsException() { // MODIFIED: Renamed and expecting exception
         Map<String, Object> input = createBaseInputMap("SINGLE", "testKey", "READ");
-
-        CacheParams params = CacheComponentParamParser.parse(input);
-
-        assertEquals(CacheType.SINGLE, params.getType());
-        assertEquals("testKey", params.getKey());
-        assertNull(params.getKeySuffix());
-        assertEquals(CacheOperation.SINGLE_READ, params.getOperation());
-        assertNull(params.getValue());
-        assertNull(params.getTtlSeconds());
+        // keySuffix is NOT added to input map
+        CacheComponentParamParser.parse(input); // Should throw for missing keySuffix
     }
 
 
@@ -136,6 +130,7 @@ public class CacheComponentParamParserTest {
         Map<String, Object> input = createBaseInputMap("ZSET", "zsetKey", "OVERWRITE");
         List<String> values = Arrays.asList("v1", "v2");
         input.put("value", JSON.toJSONString(values));
+        input.put("keySuffix", "dummySuffix"); // ADDED: keySuffix is mandatory
 
         CacheParams params = CacheComponentParamParser.parse(input);
 
@@ -149,6 +144,7 @@ public class CacheComponentParamParserTest {
     @Test
     public void testParse_ZsetAdd_Success() {
         Map<String, Object> input = createBaseInputMap("ZSET", "zsetAddKey", "ADD");
+        input.put("keySuffix", "dummySuffix"); // ADDED: keySuffix is mandatory
         input.put("value", "newValue");
         input.put("ttlSeconds", 1800);
         input.put("maxElements", 200);
@@ -167,6 +163,7 @@ public class CacheComponentParamParserTest {
     public void testParse_ZsetAdd_DefaultTTLAndMaxElements() {
         Map<String, Object> input = createBaseInputMap("ZSET", "zsetAddKey", "ADD");
         input.put("value", "newValueDefault");
+        input.put("keySuffix", "dummySuffix"); // ADDED: keySuffix is mandatory
 
         CacheParams params = CacheComponentParamParser.parse(input);
         assertEquals(Integer.valueOf(DEFAULT_TTL_SECONDS), params.getTtlSeconds());
@@ -192,7 +189,7 @@ public class CacheComponentParamParserTest {
 
     @Test
     public void testParse_ZsetReadConditional_Success() {
-        Map<String, Object> input = createBaseInputMap("ZSET", "zsetKeyCond", "READ_CONDITIONAL");
+        Map<String, Object> input = createBaseInputMap("ZSET", "zsetKeyCond", "READ_CONDITION");
         input.put("conditionTimestamp", 1678886400000L); // Example timestamp
         input.put("keySuffix", "condSuffix");
 
@@ -201,7 +198,7 @@ public class CacheComponentParamParserTest {
         assertEquals(CacheType.ZSET, params.getType());
         assertEquals("zsetKeyCond", params.getKey());
         assertEquals("condSuffix", params.getKeySuffix());
-        assertEquals(CacheOperation.ZSET_READ_CONDITIONAL, params.getOperation());
+        assertEquals(CacheOperation.ZSET_READ_CONDITION, params.getOperation());
         assertEquals(Long.valueOf(1678886400000L), params.getConditionTimestamp());
         assertNull(params.getValue());
         assertNull(params.getTtlSeconds());
@@ -210,7 +207,7 @@ public class CacheComponentParamParserTest {
 
     @Test
     public void testParse_ZsetReadConditional_Success_WithStringTimestamp() {
-        Map<String, Object> input = createBaseInputMap("ZSET", "zsetKeyCond", "READ_CONDITIONAL");
+        Map<String, Object> input = createBaseInputMap("ZSET", "zsetKeyCond", "READ_CONDITION");
         input.put("conditionTimestamp", "1678886400001");
         input.put("keySuffix", "condSuffix");
 
@@ -238,18 +235,20 @@ public class CacheComponentParamParserTest {
 
     @Test
     public void testParse_TtlAndMaxElementsAsString_Success() {
-        Map<String, Object> input = createBaseInputMap("SINGLE", "testKey", "WRITE");
-        input.put("value", "testValue");
-        input.put("ttlSeconds", "3601");
+        Map<String, Object> inputSingle = createBaseInputMap("SINGLE", "testKey", "WRITE");
+        inputSingle.put("value", "testValue");
+        inputSingle.put("keySuffix", "dummySuffix1"); // ADDED: keySuffix is mandatory
+        inputSingle.put("ttlSeconds", "3601");
 
-        CacheParams params = CacheComponentParamParser.parse(input);
-        assertEquals(Integer.valueOf(3601), params.getTtlSeconds());
+        CacheParams paramsSingle = CacheComponentParamParser.parse(inputSingle);
+        assertEquals(Integer.valueOf(3601), paramsSingle.getTtlSeconds());
 
-        input = createBaseInputMap("ZSET", "zsetKey", "ADD");
-        input.put("value", "zsetValue");
-        input.put("maxElements", "501");
-        params = CacheComponentParamParser.parse(input);
-        assertEquals(Integer.valueOf(501), params.getMaxElements());
+        Map<String, Object> inputZset = createBaseInputMap("ZSET", "zsetKey", "ADD");
+        inputZset.put("value", "zsetValue");
+        inputZset.put("keySuffix", "dummySuffix2"); // ADDED: keySuffix is mandatory
+        inputZset.put("maxElements", "501");
+        CacheParams paramsZset = CacheComponentParamParser.parse(inputZset);
+        assertEquals(Integer.valueOf(501), paramsZset.getMaxElements());
     }
 
     // Error Handling & Validation
@@ -258,6 +257,7 @@ public class CacheComponentParamParserTest {
     public void testParse_MissingType() {
         Map<String, Object> input = new HashMap<>();
         input.put("key", "testKey");
+        input.put("keySuffix", "dummySuffix");
         input.put("operation", "READ");
         CacheComponentParamParser.parse(input);
     }
@@ -266,6 +266,7 @@ public class CacheComponentParamParserTest {
     public void testParse_MissingKey() {
         Map<String, Object> input = new HashMap<>();
         input.put("type", "SINGLE");
+        input.put("keySuffix", "dummySuffix");
         input.put("operation", "READ");
         CacheComponentParamParser.parse(input);
     }
@@ -275,12 +276,14 @@ public class CacheComponentParamParserTest {
         Map<String, Object> input = new HashMap<>();
         input.put("type", "SINGLE");
         input.put("key", "testKey");
+        input.put("keySuffix", "dummySuffix");
         CacheComponentParamParser.parse(input);
     }
 
     @Test(expected = ExecutionException.class)
     public void testParse_BlankKey() {
         Map<String, Object> input = createBaseInputMap("SINGLE", "   ", "READ");
+        input.put("keySuffix", "dummySuffix"); // Need valid keySuffix to test blank key
         CacheComponentParamParser.parse(input);
     }
 
@@ -295,58 +298,66 @@ public class CacheComponentParamParserTest {
     @Test(expected = ExecutionException.class)
     public void testParse_SingleWrite_MissingValue() {
         Map<String, Object> input = createBaseInputMap("SINGLE", "testKey", "WRITE");
+        input.put("keySuffix", "dummySuffix"); // ADDED: keySuffix is mandatory
         CacheComponentParamParser.parse(input);
     }
 
     @Test(expected = ExecutionException.class)
     public void testParse_ZsetAdd_MissingValue() {
         Map<String, Object> input = createBaseInputMap("ZSET", "zsetKey", "ADD");
+        input.put("keySuffix", "dummySuffix"); // ADDED: keySuffix is mandatory
         CacheComponentParamParser.parse(input);
     }
 
     @Test(expected = ExecutionException.class)
     public void testParse_ZsetCheckExist_MissingValue() {
         Map<String, Object> input = createBaseInputMap("ZSET", "zsetKey", "CHECK_EXIST");
+        input.put("keySuffix", "dummySuffix"); // ADDED: keySuffix is mandatory
         CacheComponentParamParser.parse(input);
     }
 
     @Test(expected = ExecutionException.class)
     public void testParse_ZsetOverwrite_MissingValue() {
         Map<String, Object> input = createBaseInputMap("ZSET", "zsetKey", "OVERWRITE");
+        input.put("keySuffix", "dummySuffix"); // ADDED: keySuffix is mandatory
         CacheComponentParamParser.parse(input);
     }
 
     @Test(expected = ExecutionException.class)
     public void testParse_ZsetReadConditional_MissingConditionTimestamp() {
-        Map<String, Object> input = createBaseInputMap("ZSET", "zsetKey", "READ_CONDITIONAL");
+        Map<String, Object> input = createBaseInputMap("ZSET", "zsetKey", "READ_CONDITION");
+        input.put("keySuffix", "dummySuffix"); // ADDED: keySuffix is mandatory
         CacheComponentParamParser.parse(input);
     }
 
     @Test
     public void testParse_InvalidTypeEnum() {
         Map<String, Object> input = createBaseInputMap("INVALID_TYPE", "testKey", "READ");
+        input.put("keySuffix", "dummySuffix"); // ADDED: keySuffix is mandatory
         try {
             CacheComponentParamParser.parse(input);
             fail("Should have thrown ExecutionException");
         } catch (ExecutionException e) {
-            assertTrue(e.getMessage().contains("Invalid cache type"));
+            assertEquals("Invalid type: INVALID_TYPE", e.getMessage()); // MODIFIED: Exact message check
         }
     }
 
     @Test
     public void testParse_InvalidOperationEnum() {
         Map<String, Object> input = createBaseInputMap("SINGLE", "testKey", "INVALID_OP");
+        input.put("keySuffix", "dummySuffix"); // ADDED: keySuffix is mandatory
         try {
             CacheComponentParamParser.parse(input);
             fail("Should have thrown ExecutionException");
         } catch (ExecutionException e) {
-            assertTrue(e.getMessage().contains("Invalid cache operation"));
+            assertEquals("Invalid operation: INVALID_OP", e.getMessage()); // MODIFIED: Exact message check
         }
     }
 
     @Test
     public void testParse_IncompatibleTypeOperation_SingleWithZsetAdd() {
         Map<String, Object> input = createBaseInputMap("SINGLE", "testKey", "ADD");
+        input.put("keySuffix", "dummySuffix"); // ADDED: keySuffix is mandatory
         input.put("value", "someValue"); // ZSET_ADD needs value
         try {
             CacheComponentParamParser.parse(input);
@@ -359,7 +370,8 @@ public class CacheComponentParamParserTest {
     @Test
     public void testParse_IncompatibleTypeOperation_ZsetWithSingleWrite() {
         Map<String, Object> input = createBaseInputMap("ZSET", "testKey", "WRITE");
-         input.put("value", "someValue"); // SINGLE_WRITE needs value
+        input.put("keySuffix", "dummySuffix"); // ADDED: keySuffix is mandatory
+        input.put("value", "someValue"); // SINGLE_WRITE needs value
         try {
             CacheComponentParamParser.parse(input);
             fail("Should have thrown ExecutionException for incompatible type and operation");
@@ -372,25 +384,30 @@ public class CacheComponentParamParserTest {
     @Test
     public void testParse_ZsetOverwrite_ValueNotJsonArray() {
         Map<String, Object> input = createBaseInputMap("ZSET", "zsetKey", "OVERWRITE");
+        input.put("keySuffix", "dummySuffix"); // ADDED: keySuffix is mandatory
         input.put("value", "this is not a json array");
         try {
             CacheComponentParamParser.parse(input);
             fail("Should have thrown ExecutionException");
         } catch (ExecutionException e) {
-            assertTrue(e.getMessage().toLowerCase().contains("failed to parse value for zset_overwrite") ||
-                       e.getMessage().toLowerCase().contains("com.alibaba.fastjson.jsonexception"));
+            // Based on generic catch in CacheComponentParamParser.parse:
+            // new ExecutionException("Invalid params: " + e.getMessage(), e);
+            // And JSON.parseArray throwing JSONException
+            assertTrue(e.getMessage().startsWith("Invalid params: "));
+            assertTrue(e.getCause() instanceof com.alibaba.fastjson.JSONException);
         }
     }
 
     @Test
     public void testParse_ZsetOverwrite_ValueNull() {
         Map<String, Object> input = createBaseInputMap("ZSET", "zsetKey", "OVERWRITE");
-        input.put("value", null); // Explicitly null
+        input.put("keySuffix", "dummySuffix"); // ADDED: keySuffix is mandatory
+        input.put("value", null); // Explicitly null, requireString will handle this
         try {
             CacheComponentParamParser.parse(input);
             fail("Should have thrown ExecutionException for missing value");
         } catch (ExecutionException e) {
-            assertTrue(e.getMessage().contains("Missing required field 'value'"));
+            assertEquals("Missing required field: value", e.getMessage()); // MODIFIED: Exact message check
         }
     }
 
@@ -398,59 +415,64 @@ public class CacheComponentParamParserTest {
     @Test
     public void testParse_ZsetOverwrite_ValueEmptyJsonArray() {
         Map<String, Object> input = createBaseInputMap("ZSET", "zsetKey", "OVERWRITE");
+        input.put("keySuffix", "dummySuffix"); // ADDED: keySuffix is mandatory
         input.put("value", JSON.toJSONString(Collections.emptyList()));
         try {
             CacheComponentParamParser.parse(input);
             fail("Should have thrown ExecutionException");
         } catch (ExecutionException e) {
-            assertTrue(e.getMessage().contains("Value for ZSET_OVERWRITE cannot be an empty list"));
+            assertEquals("Values array cannot be empty", e.getMessage()); // MODIFIED: Exact message check
         }
     }
 
     @Test
     public void testParse_MalformedTtlSeconds() {
         Map<String, Object> input = createBaseInputMap("SINGLE", "testKey", "WRITE");
+        input.put("keySuffix", "dummySuffix"); // ADDED: keySuffix is mandatory
         input.put("value", "testValue");
         input.put("ttlSeconds", "not-a-number");
         try {
             CacheComponentParamParser.parse(input);
             fail("Should have thrown ExecutionException");
         } catch (ExecutionException e) {
-             assertTrue(e.getMessage().toLowerCase().contains("invalid integer value for ttlseconds") ||
-                       e.getMessage().toLowerCase().contains("numberformatexception"));
+            assertTrue(e.getMessage().startsWith("Invalid params: ")); // MODIFIED: Check wrapper message
+            assertTrue(e.getCause() instanceof NumberFormatException); // MODIFIED: Check cause
         }
     }
 
     @Test
     public void testParse_MalformedMaxElements() {
         Map<String, Object> input = createBaseInputMap("ZSET", "zsetKey", "ADD");
+        input.put("keySuffix", "dummySuffix"); // ADDED: keySuffix is mandatory
         input.put("value", "zsetValue");
         input.put("maxElements", "not-a-number");
         try {
             CacheComponentParamParser.parse(input);
             fail("Should have thrown ExecutionException");
         } catch (ExecutionException e) {
-             assertTrue(e.getMessage().toLowerCase().contains("invalid integer value for maxelements") ||
-                       e.getMessage().toLowerCase().contains("numberformatexception"));
+            assertTrue(e.getMessage().startsWith("Invalid params: ")); // MODIFIED: Check wrapper message
+            assertTrue(e.getCause() instanceof NumberFormatException); // MODIFIED: Check cause
         }
     }
 
     @Test
     public void testParse_MalformedConditionTimestamp() {
-        Map<String, Object> input = createBaseInputMap("ZSET", "zsetKey", "READ_CONDITIONAL");
+        Map<String, Object> input = createBaseInputMap("ZSET", "zsetKey", "READ_CONDITION");
+        input.put("keySuffix", "dummySuffix"); // ADDED: keySuffix is mandatory
         input.put("conditionTimestamp", "not-a-long");
         try {
             CacheComponentParamParser.parse(input);
             fail("Should have thrown ExecutionException");
         } catch (ExecutionException e) {
-            assertTrue(e.getMessage().toLowerCase().contains("invalid long value for conditiontimestamp") ||
-                       e.getMessage().toLowerCase().contains("numberformatexception"));
+            assertTrue(e.getMessage().startsWith("Invalid params: ")); // MODIFIED: Check wrapper message
+            assertTrue(e.getCause() instanceof NumberFormatException); // MODIFIED: Check cause
         }
     }
 
     @Test
     public void testParse_ValueNotRequiredForSingleRead() {
         Map<String, Object> input = createBaseInputMap("SINGLE", "testKey", "READ");
+        input.put("keySuffix", "dummySuffix"); // ADDED: keySuffix is mandatory
         // No "value" field
         CacheParams params = CacheComponentParamParser.parse(input);
         assertNull(params.getValue());
@@ -459,6 +481,7 @@ public class CacheComponentParamParserTest {
     @Test
     public void testParse_ValueNotRequiredForZsetReadAll() {
         Map<String, Object> input = createBaseInputMap("ZSET", "zsetKey", "READ_ALL");
+        input.put("keySuffix", "dummySuffix"); // ADDED: keySuffix is mandatory
         // No "value" field
         CacheParams params = CacheComponentParamParser.parse(input);
         assertNull(params.getValue());
@@ -467,50 +490,58 @@ public class CacheComponentParamParserTest {
 
     @Test
     public void testParse_ConditionTimestampNotRequiredForOtherOps() {
-        Map<String, Object> input = createBaseInputMap("ZSET", "zsetKey", "READ_ALL");
-        CacheParams params = CacheComponentParamParser.parse(input);
-        assertNull(params.getConditionTimestamp());
+        Map<String, Object> inputZset = createBaseInputMap("ZSET", "zsetKey", "READ_ALL");
+        inputZset.put("keySuffix", "dummySuffix"); // ADDED: keySuffix is mandatory
+        CacheParams paramsZset = CacheComponentParamParser.parse(inputZset);
+        assertNull(paramsZset.getConditionTimestamp());
 
-        input = createBaseInputMap("SINGLE", "testKeySingle", "READ");
-        params = CacheComponentParamParser.parse(input);
-        assertNull(params.getConditionTimestamp());
+        Map<String, Object> inputSingle = createBaseInputMap("SINGLE", "testKeySingle", "READ");
+        inputSingle.put("keySuffix", "dummySuffix"); // ADDED: keySuffix is mandatory
+        CacheParams paramsSingle = CacheComponentParamParser.parse(inputSingle);
+        assertNull(paramsSingle.getConditionTimestamp());
     }
 
     @Test
     public void testParse_ValuesForZsetOverwriteNullForOtherOps() {
-        Map<String, Object> input = createBaseInputMap("ZSET", "zsetKey", "ADD");
-        input.put("value", "item1");
-        CacheParams params = CacheComponentParamParser.parse(input);
-        assertNull(params.getValuesForZSetOverwrite());
+        Map<String, Object> inputZset = createBaseInputMap("ZSET", "zsetKey", "ADD");
+        inputZset.put("keySuffix", "dummySuffix"); // ADDED: keySuffix is mandatory
+        inputZset.put("value", "item1");
+        CacheParams paramsZset = CacheComponentParamParser.parse(inputZset);
+        assertNull(paramsZset.getValuesForZSetOverwrite());
 
-        input = createBaseInputMap("SINGLE", "testKeySingle", "WRITE");
-        input.put("value", "item1");
-        params = CacheComponentParamParser.parse(input);
-        assertNull(params.getValuesForZSetOverwrite());
+        Map<String, Object> inputSingle = createBaseInputMap("SINGLE", "testKeySingle", "WRITE");
+        inputSingle.put("keySuffix", "dummySuffix"); // ADDED: keySuffix is mandatory
+        inputSingle.put("value", "item1");
+        CacheParams paramsSingle = CacheComponentParamParser.parse(inputSingle);
+        assertNull(paramsSingle.getValuesForZSetOverwrite());
     }
 
     @Test
     public void testParse_TtlAndMaxElementsNullForReadOps() {
-        Map<String, Object> input = createBaseInputMap("SINGLE", "testKey", "READ");
-        CacheParams params = CacheComponentParamParser.parse(input);
-        assertNull(params.getTtlSeconds());
-        assertNull(params.getMaxElements());
+        Map<String, Object> inputSingle = createBaseInputMap("SINGLE", "testKey", "READ");
+        inputSingle.put("keySuffix", "dummySuffix"); // ADDED: keySuffix is mandatory
+        CacheParams paramsSingle = CacheComponentParamParser.parse(inputSingle);
+        assertNull(paramsSingle.getTtlSeconds());
+        assertNull(paramsSingle.getMaxElements());
 
-        input = createBaseInputMap("ZSET", "zsetKey", "READ_ALL");
-        params = CacheComponentParamParser.parse(input);
-        assertNull(params.getTtlSeconds());
-        assertNull(params.getMaxElements());
+        Map<String, Object> inputZsetReadAll = createBaseInputMap("ZSET", "zsetKey", "READ_ALL");
+        inputZsetReadAll.put("keySuffix", "dummySuffix"); // ADDED: keySuffix is mandatory
+        CacheParams paramsZsetReadAll = CacheComponentParamParser.parse(inputZsetReadAll);
+        assertNull(paramsZsetReadAll.getTtlSeconds());
+        assertNull(paramsZsetReadAll.getMaxElements());
 
-        input = createBaseInputMap("ZSET", "zsetKey", "READ_CONDITIONAL");
-        input.put("conditionTimestamp", 123L);
-        params = CacheComponentParamParser.parse(input);
-        assertNull(params.getTtlSeconds());
-        assertNull(params.getMaxElements());
+        Map<String, Object> inputZsetReadCond = createBaseInputMap("ZSET", "zsetKey", "READ_CONDITION");
+        inputZsetReadCond.put("keySuffix", "dummySuffix"); // ADDED: keySuffix is mandatory
+        inputZsetReadCond.put("conditionTimestamp", 123L);
+        CacheParams paramsZsetReadCond = CacheComponentParamParser.parse(inputZsetReadCond);
+        assertNull(paramsZsetReadCond.getTtlSeconds());
+        assertNull(paramsZsetReadCond.getMaxElements());
 
-        input = createBaseInputMap("ZSET", "zsetKey", "CHECK_EXIST");
-        input.put("value", "item");
-        params = CacheComponentParamParser.parse(input);
-        assertNull(params.getTtlSeconds());
-        assertNull(params.getMaxElements());
+        Map<String, Object> inputZsetCheckExist = createBaseInputMap("ZSET", "zsetKey", "CHECK_EXIST");
+        inputZsetCheckExist.put("keySuffix", "dummySuffix"); // ADDED: keySuffix is mandatory
+        inputZsetCheckExist.put("value", "item");
+        CacheParams paramsZsetCheckExist = CacheComponentParamParser.parse(inputZsetCheckExist);
+        assertNull(paramsZsetCheckExist.getTtlSeconds());
+        assertNull(paramsZsetCheckExist.getMaxElements());
     }
 }
